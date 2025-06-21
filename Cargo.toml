@@ -4,3 +4,14 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+# keep-sorted start
+crop = "0.4"
+proc-macro2 = { version = "1", features = ["span-locations"] }
+prettyplease = { version = "0.2", features = ["verbatim"] }
+proc-macro2-diagnostics = { version = "0.10", default-features = false }
+quote = "1"
+syn = { version = "2", features = ["visit", "full", "extra-traits"] }
+# keep-sorted end
+
+[dev-dependencies]
+pretty_assertions = "*"

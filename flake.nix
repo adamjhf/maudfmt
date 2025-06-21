@@ -78,6 +78,16 @@
           pre-commit-check = pre-commit-hooks.lib.${pkgs.system}.run {
             src = ./.;
             hooks = {
+              # General
+              keep-sorted = {
+                enable = true;
+                name = "Keep sorted";
+                types = [
+                  "nix"
+                  "rust"
+                ];
+                entry = "${pkgs.keep-sorted}/bin/keep-sorted";
+              };
               # Nix
               nixfmt-rfc-style.enable = true;
               # flake-checker.enable = true; # broken in 24.11
