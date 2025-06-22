@@ -42,6 +42,25 @@
         ];
     in
     {
+      packages = forAllSystems (
+        system:
+        let
+          pkgs = import nixpkgs { inherit system; };
+          toolchain = mkRustToolchain system;
+          naersk' = naersk.lib.${system}.override {
+            cargo = toolchain;
+            rustc = toolchain;
+          };
+        in
+        rec {
+          default = maudfmt;
+          maudfmt = naersk'.buildPackage {
+            src = ./.;
+            doCheck = true; # run tests when compiling
+          };
+        }
+      );
+
       devShells = forAllSystems (system: {
         default =
           let
