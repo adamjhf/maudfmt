@@ -77,6 +77,11 @@
         {
           pre-commit-check = pre-commit-hooks.lib.${pkgs.system}.run {
             src = ./.;
+            settings = {
+              rust.check.cargoDeps = pkgs.rustPlatform.importCargoLock {
+                lockFile = ./Cargo.lock;
+              };
+            };
             hooks = {
               # General
               yamlfmt.enable = true;
@@ -97,7 +102,7 @@
               };
               # Nix
               nixfmt-rfc-style.enable = true;
-              # flake-checker.enable = true; # broken in 24.11
+              flake-checker.enable = true;
               # Rust
               rustfmt = {
                 enable = true;
@@ -107,7 +112,6 @@
                 };
               };
               clippy = {
-                # TODO(jeosas): use naersk to access dependency in nix offline sandbox
                 enable = true;
                 packageOverrides = {
                   cargo = toolchain;
@@ -116,7 +120,6 @@
                 settings = {
                   denyWarnings = true;
                   extraArgs = "--all-targets";
-                  offline = false; # incompatible with `nix flake check`
                 };
               };
             };
