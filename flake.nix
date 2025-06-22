@@ -79,6 +79,7 @@
             src = ./.;
             hooks = {
               # General
+              yamlfmt.enable = true;
               keep-sorted = {
                 enable = true;
                 name = "Keep sorted";
