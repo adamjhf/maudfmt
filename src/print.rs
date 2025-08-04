@@ -68,13 +68,13 @@ impl<'a, 'b> Printer<'a, 'b> {
             self.print_attr_comment(self.mac.macro_.delimiter.span().open().end());
             for markup in ast.markups {
                 self.new_line(indent_level + 1);
-                self.print_markup(markup, indent_level + 1);
+                self.print_markup(markup, indent_level + 1, true);
             }
             self.print_trailing_comments(*self.mac.macro_.delimiter.span(), indent_level + 1);
             self.new_line(indent_level);
 
             let close_location = self.mac.macro_.delimiter.span().close().end();
-            self.print_inline_comment_and_whitespace(close_location, indent_level);
+            self.print_inline_comment_and_whitespace(close_location, indent_level, true);
             self.write("}");
             self.print_attr_comment(close_location);
         }
@@ -121,6 +121,7 @@ impl<'a, 'b> Printer<'a, 'b> {
         self.print_inline_comment_and_whitespace(
             block.brace_token.span.span().start(),
             indent_level,
+            true,
         );
 
         let expand = self.block_contains_comments(block.brace_token.span) || {
@@ -141,14 +142,14 @@ impl<'a, 'b> Printer<'a, 'b> {
                 self.new_line(indent_level + 1);
                 for markup in block.markups.markups {
                     // there should be only one value
-                    self.print_markup(markup, indent_level + 1);
+                    self.print_markup(markup, indent_level + 1, true);
                 }
                 self.new_line(indent_level);
                 self.write("}");
             } else {
                 for markup in block.markups.markups {
                     self.write(" ");
-                    self.print_markup(markup, indent_level);
+                    self.print_markup(markup, indent_level, false);
                 }
                 self.write(" }");
             }
@@ -163,7 +164,7 @@ impl<'a, 'b> Printer<'a, 'b> {
             } else {
                 for markup in block.markups.markups {
                     self.new_line(indent_level + 1);
-                    self.print_markup(markup, indent_level + 1);
+                    self.print_markup(markup, indent_level + 1, true);
                 }
                 self.print_trailing_comments(block.brace_token.span, indent_level + 1);
             }
@@ -174,14 +175,19 @@ impl<'a, 'b> Printer<'a, 'b> {
         }
     }
 
-    fn print_markup<E: Into<Element>>(&mut self, markup: Markup<E>, indent_level: usize) {
+    fn print_markup<E: Into<Element>>(
+        &mut self,
+        markup: Markup<E>,
+        indent_level: usize,
+        preserve_blank_lines: bool,
+    ) {
         match markup {
-            Markup::Lit(html_lit) => self.print_lit(html_lit, indent_level),
+            Markup::Lit(html_lit) => self.print_lit(html_lit, indent_level, preserve_blank_lines),
             Markup::Splice { paren_token, expr } => {
-                self.print_splice(expr, paren_token, indent_level)
+                self.print_splice(expr, paren_token, indent_level, preserve_blank_lines)
             }
             Markup::Element(element) => {
-                self.print_element_with_contents(element.into(), indent_level)
+                self.print_element_with_contents(element.into(), indent_level, preserve_blank_lines)
             }
             Markup::Block(block) => self.print_block(block, indent_level),
             Markup::ControlFlow(control_flow) => {
@@ -193,15 +199,29 @@ impl<'a, 'b> Printer<'a, 'b> {
 
     // NOTE: lit do not care about line length
     //       let user take care of it
-    fn print_lit(&mut self, html_lit: HtmlLit, indent_level: usize) {
-        self.print_inline_comment_and_whitespace(html_lit.span().start(), indent_level);
+    fn print_lit(&mut self, html_lit: HtmlLit, indent_level: usize, preserve_blank_lines: bool) {
+        self.print_inline_comment_and_whitespace(
+            html_lit.span().start(),
+            indent_level,
+            preserve_blank_lines,
+        );
         let lit = &html_lit.lit;
         self.write(&quote!(#lit).to_string());
         self.print_attr_comment(html_lit.span().end());
     }
 
-    fn print_splice(&mut self, expr: Expr, paren: Paren, indent_level: usize) {
-        self.print_inline_comment_and_whitespace(paren.span.span().start(), indent_level);
+    fn print_splice(
+        &mut self,
+        expr: Expr,
+        paren: Paren,
+        indent_level: usize,
+        preserve_blank_lines: bool,
+    ) {
+        self.print_inline_comment_and_whitespace(
+            paren.span.span().start(),
+            indent_level,
+            preserve_blank_lines,
+        );
         self.write("(");
 
         if self.print_attr_comment(paren.span.open().span().end()) {
@@ -255,7 +275,24 @@ impl<'a, 'b> Printer<'a, 'b> {
         &mut self,
         Element { name, attrs, body }: Element,
         indent_level: usize,
+        preserve_blank_lines: bool,
     ) {
+        // Check if this element's block will be collapsed
+        let will_collapse_block = match &body {
+            ElementBody::Block(block) => {
+                !self.block_contains_comments(block.brace_token.span) && {
+                    if let Some(blk_len) = block_len(block) {
+                        (self.line_len() + blk_len) <= self.options.line_length
+                    } else {
+                        false
+                    }
+                }
+            }
+            _ => false,
+        };
+
+        // Don't preserve blank lines if this element's block will be collapsed
+        let preserve_blank_lines = preserve_blank_lines && !will_collapse_block;
         // sorting out attributes
         let mut id_name: Option<(Pound, HtmlNameOrMarkup)> = None;
         let mut classes: Vec<(Dot, HtmlNameOrMarkup, Option<Toggler>)> = Vec::new();
@@ -283,7 +320,11 @@ impl<'a, 'b> Printer<'a, 'b> {
 
         // element tag name
         if let Some(html_name) = name {
-            self.print_inline_comment_and_whitespace(html_name.span().start(), indent_level);
+            self.print_inline_comment_and_whitespace(
+                html_name.span().start(),
+                indent_level,
+                preserve_blank_lines,
+            );
             is_first_attr = false;
             self.print_html_name(&html_name);
             self.print_attr_comment(html_name.span().end());
@@ -302,6 +343,7 @@ impl<'a, 'b> Printer<'a, 'b> {
                     self.print_inline_comment_and_whitespace(
                         pound_token.span().start(),
                         indent_level,
+                        preserve_blank_lines,
                     );
                     is_first_attr = false;
                 }
@@ -312,7 +354,7 @@ impl<'a, 'b> Printer<'a, 'b> {
                     self.print_html_name(&html_name);
                     self.print_attr_comment(html_name.span().end());
                 }
-                HtmlNameOrMarkup::Markup(markup) => self.print_markup(markup, indent_level),
+                HtmlNameOrMarkup::Markup(markup) => self.print_markup(markup, indent_level, true),
             }
         }
 
@@ -327,6 +369,7 @@ impl<'a, 'b> Printer<'a, 'b> {
                     self.print_inline_comment_and_whitespace(
                         dot_token.span().start(),
                         indent_level,
+                        preserve_blank_lines,
                     );
                     is_first_attr = false;
                 }
@@ -337,7 +380,7 @@ impl<'a, 'b> Printer<'a, 'b> {
                     self.print_html_name(&html_name);
                     self.print_attr_comment(html_name.span().end());
                 }
-                HtmlNameOrMarkup::Markup(markup) => self.print_markup(markup, indent_level),
+                HtmlNameOrMarkup::Markup(markup) => self.print_markup(markup, indent_level, true),
             }
             if let Some(toggler) = maybe_toggler {
                 self.write("[");
@@ -369,7 +412,7 @@ impl<'a, 'b> Printer<'a, 'b> {
                     } else {
                         indent_level
                     };
-                    self.print_markup(value, attr_indent)
+                    self.print_markup(value, attr_indent, true)
                 }
                 AttributeType::Optional { toggler, .. } => {
                     self.write("=[");
@@ -420,6 +463,7 @@ impl<'a, 'b> Printer<'a, 'b> {
         self.print_inline_comment_and_whitespace(
             control_flow.at_token.span.span().start(),
             indent_level,
+            true,
         );
         match control_flow.kind {
             ControlFlowKind::If(if_expr) => {
@@ -453,7 +497,7 @@ impl<'a, 'b> Printer<'a, 'b> {
                         self.print_expr(guard_cond, indent_level);
                     }
                     self.write(" => ");
-                    self.print_markup(arm.body, indent_level + 1);
+                    self.print_markup(arm.body, indent_level + 1, true);
                 }
                 self.print_trailing_comments(match_expr.brace_token.span, indent_level + 1);
                 self.new_line(indent_level);
@@ -545,7 +589,12 @@ impl<'a, 'b> Printer<'a, 'b> {
         false
     }
 
-    fn print_inline_comment_and_whitespace(&mut self, loc: LineColumn, indent_level: usize) {
+    fn print_inline_comment_and_whitespace(
+        &mut self,
+        loc: LineColumn,
+        indent_level: usize,
+        preserve_blank_lines: bool,
+    ) {
         let mut cursor_line = loc.line - 1; // LineColumn.line is 1-indexed
         if cursor_line == 0 {
             // line is already the top of the document
@@ -557,12 +606,13 @@ impl<'a, 'b> Printer<'a, 'b> {
         }
 
         // Keep whitespace
-        if self
-            .source
-            .line(cursor_line - 1)
-            .to_string()
-            .trim()
-            .is_empty()
+        if preserve_blank_lines
+            && self
+                .source
+                .line(cursor_line - 1)
+                .to_string()
+                .trim()
+                .is_empty()
         {
             self.buf = String::new(); // remove indent for less bytes in final file
             self.new_line(indent_level);

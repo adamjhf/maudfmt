@@ -1184,6 +1184,28 @@ mod test {
     );
 
     test_default!(
+        blank_line_above_splice,
+        r#"
+        html!{
+            .test {
+
+            .test3 {
+
+            (a)
+            }
+            }
+        }
+        "#,
+        r#"
+        html! {
+            .test {
+                .test3 { (a) }
+            }
+        }
+        "#
+    );
+
+    test_default!(
         if_let_chain,
         r#"
             html! { @if let Some(x) = Some(1) && x > 0 { "test" }
