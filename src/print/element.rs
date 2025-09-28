@@ -59,6 +59,9 @@ impl<'a, 'b> Printer<'a, 'b> {
         } else {
             true
         };
+
+        let element_name_len = name.as_ref().map_or(0, |n| n.to_string().len());
+        let should_wrap_first_named_attr = should_wrap && element_name_len > 3;
         let mut is_first_attr = true;
 
         // element tag name
@@ -135,8 +138,23 @@ impl<'a, 'b> Printer<'a, 'b> {
         }
 
         // printing other attributes
+        let mut is_first_named_attr = true;
         for (name, attr_type) in named_attrs {
-            if should_wrap {
+            if is_first_named_attr {
+                if should_wrap_first_named_attr {
+                    self.new_line(indent_level + 1);
+                } else if should_wrap {
+                    let spaces_needed = if element_name_len < 4 {
+                        4 - element_name_len
+                    } else {
+                        1
+                    };
+                    self.write(&" ".repeat(spaces_needed));
+                } else {
+                    self.write(" ");
+                }
+                is_first_named_attr = false;
+            } else if should_wrap {
                 self.new_line(indent_level + 1);
             } else {
                 self.write(" ");
@@ -631,8 +649,7 @@ mod test {
         "#,
         r#"
         html! {
-            div
-                test={
+            div test={
                     "This is a long multi-line attribute."
                     "This is another line in the long attribute value."
                 }
@@ -687,6 +704,41 @@ mod test {
                         .map(|x| x.to_string())
                         .unwrap_or_default() == some_long_testing_variable_name
                 ];
+        }
+        "#
+    );
+
+    test_small_line!(
+        short_element_name_multiple_long_attributes,
+        r#"
+        html! {
+            p class="very-long-class-name-that-exceeds-line-length" href="https://example.com/very-long-url" data-attribute="another-very-long-attribute-value" { "content" }
+        }
+        "#,
+        r#"
+        html! {
+            p   class="very-long-class-name-that-exceeds-line-length"
+                href="https://example.com/very-long-url"
+                data-attribute="another-very-long-attribute-value"
+            { "content" }
+        }
+        "#
+    );
+
+    test_small_line!(
+        long_element_name_multiple_long_attributes,
+        r#"
+        html! {
+            section class="very-long-class-name-that-exceeds-line-length" href="https://example.com/very-long-url" data-attribute="another-very-long-attribute-value" { "content" }
+        }
+        "#,
+        r#"
+        html! {
+            section
+                class="very-long-class-name-that-exceeds-line-length"
+                href="https://example.com/very-long-url"
+                data-attribute="another-very-long-attribute-value"
+            { "content" }
         }
         "#
     );
